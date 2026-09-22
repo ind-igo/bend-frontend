@@ -1,78 +1,100 @@
 # bend-frontend
 
-A composable frontend for **full upstream Bend 2**. It loads source and imports, elaborates syntax, checks types, quantities, termination and proofs, and returns a typed, serializable checked program.
+A composable frontend for **full upstream Bend 2**, written in Bend. The core schema, upstream-to-Core conversion, frontend policy, CLI, and example lowering are Bend programs. A JavaScript host adapter calls the pinned upstream checker and transports its result as generic data.
 
 ```text
-Bend source → upstream parser and checker → CheckedProgram → your consumer
+Bend source → upstream checker → generic data → Bend decoder → Core.Program → consumer
 ```
 
-The library has no compiler or runtime dependency, backend registry, target selection, or requirement for a `main` function. Backends and analysis tools are ordinary functions that consume `CheckedProgram`; the frontend does not register or call them.
+The frontend has no backend registry or target selection and does not require the input to define `main`. It checks types, quantities, termination and proofs without executing the input program or its effects. The host uses upstream's JS compiler only to bootstrap our own Bend tools.
 
 ## Use
 
-Requires Git and Bun (tested with 1.3.12).
+Requires Git and Bun (tested with Bun 1.3.12). There are no package dependencies.
 
 ```sh
 git submodule update --init
-bun install --frozen-lockfile
 bun run cli check examples/PROOF.bend
 bun run cli export examples/program.bend -o build/program.core.json
-bun test
-bun run typecheck
+bun run check
+bun run test
 ```
 
-The library is the package's primary entry point. The CLI only checks or writes the same data as JSON.
+The CLI implementation is [src/cli.bend](src/cli.bend). The package command invokes it through [host/run.js](host/run.js), which also runs other Bend consumers with the checker/IO adapter attached:
 
-```ts
-import { check, type CheckedProgram } from 'bend-frontend';
+```sh
+mkdir -p build
+bun host/run.js experiments/yul/emit.bend > build/calculate.yul
+bun run test:lowering  # additionally requires solc and anvil
+```
+
+Start with [Connecting Bend to backends](docs/backends.md) for the architecture, extension steps, proof boundaries, and EVM/WASM/Zig/ZK considerations. The [Yul walkthrough](experiments/yul/README.md) is a runnable example.
+
+## The Bend interface
+
+[src/core.bend](src/core.bend) is the authoritative schema. [src/frontend.bend](src/frontend.bend) exposes:
+
+```bend
+# Frontend.check returns IO(Result<&2, &2, String, Core.Program>).
+# Your consumer pattern-matches Done{program} or Fail{error}.
+result : Result<&2, &2, String, Core.Program> <- Frontend.check(file)
+```
+
+`Frontend.finish` is the pure boundary between host observations and an accepted program. It runs [decode.bend](src/decode.bend), which translates upstream terms, patterns, declarations, and templates, validates metadata, and counts term nodes. It rejects proof holes, open laws, and a `PROOF.bend` that does not import its adjacent `LAWS.bend`. The host resolves files/imports, verifies the upstream pin, invokes the checker, and reifies its internal syntax. It never compiles the user's input. Content-addressed imports may be fetched by upstream.
+
+JavaScript callers can use the same Bend frontend through the host convenience API:
+
+```js
+import { check, array } from 'bend-frontend';
 
 const program = await check('examples/program.bend');
-
-// A consumer needs only the public data types.
-function definitions(program: CheckedProgram) {
-  return program.declarations.filter(d => d.kind === 'Def');
-}
-
-console.log(definitions(program).map(d => d.name));
+console.log(array(program.declarations).map(d => d.header.name));
 ```
 
-`check(file)` resolves a filesystem entry and uses upstream import resolution, including `Base` and content-addressed packages (which upstream may fetch if absent). It rejects failed checks, holes, and open laws. `PROOF.bend` must import an adjacent `LAWS.bend` when one exists. Errors retain upstream's diagnostic text. Checking can normalize terms, but does not run `main` or load foreign implementations; those files need not exist yet.
+## Export format 2
 
-## The boundary
+This is a schema change from the initial TypeScript prototype's format 1. `check` returns the same constructor-shaped `Core.Program` that Bend consumers receive. `export` writes it as JSON; it round-trips through ordinary `JSON.stringify`/`JSON.parse`, with no functions, source spans, upstream `Book`, or JavaScript `BigInt` values.
 
-The public types are `CheckedProgram`, `CoreDeclaration`, `CoreTerm`, `CorePattern`, and `Quantity`, defined in [src/core.ts](src/core.ts). Their fields contain plain objects, arrays, strings, numbers, booleans, and null; optional fields may be absent. There are no upstream `Book` objects, JavaScript functions, or source-span objects to interpret.
+Lists use Bend's `Con{head, tail}` / `Nil{}` representation, options use `Some{value}` / `None{}`, and constructors carry a `$` tag. The host `array` helper is only a convenience for JS callers. No backend-specific reshaping occurs at this boundary.
 
-The program carries `format: "bend-frontend.core"`, `version: 1`, and the upstream revision. The format is versioned; breaking representation changes require a version change. It is checked core syntax, not an executable machine IR.
-
-| Field | Meaning |
+| Program field | Meaning |
 | --- | --- |
-| `entry`, `inputs` | Absolute entry path and loaded source/declared foreign file paths. No transitive foreign includes or content attestation. |
-| `declarations` | All loaded declarations, including Base and generated template instances, identified by canonical `name`. |
-| `order` | Upstream declaration/checking order; a law and its fill can repeat a name. |
-| `templates` | Template name → upstream specialization key → generated declaration name. Treat keys as opaque. |
+| `format`, `version` | `bend-frontend.core`, `2` |
+| `repository`, `commit` | Pinned upstream identity |
+| `entry`, `inputs` | Absolute entry and loaded source/declared foreign paths |
+| `order` | Check/declaration order; laws and their fills can repeat a name |
+| `templates` | Template names and opaque specialization-key → generated-name mappings |
+| `declarations` | Complete declarations, including Base and generated instances |
+| `nodes` | Number of reified term nodes; traversal budget metadata, not a cost or gas bound |
 
-Each declaration includes its type, arity, and whether it came from Base. Arity includes erased and template binders; a constructor's arity counts its own fields, while its type includes the datatype parameters too. Datatypes include constructors and their types, parameter count, and leading quantity-parameter count. Definitions include `sourceBody` (elaborated syntax before checking), `checkedBody` (with checker annotations and specialized calls), template-parameter count, an explicit `unsafe` marker, and declared `foreign` paths. Foreign and primitive declarations can have null bodies.
+`Algebraic` and `Definition` share a `Header` containing `name`, `base`, `arity`, and `typ`. Definitions retain template counts, unsafe markers, foreign paths, and optional source/checked bodies. Foreign implementations need not exist; they are recorded without loading them. The export includes every declaration rather than pruning unreachable ones, and can be large. Generic transport increases allocation and decoding costs; exporting the frontend itself expands to millions of term nodes. Use `bun run check` for its proof validation without exporting that syntax.
 
-For templates, the first `templateParameters` leading `All` binders correspond to symbolic `Ref` names formed as `declaration.name + "~" + binder.k`, with each binder's domain as its type (substitute earlier symbolic parameters in dependent domains). These parameters are already substituted out of `checkedBody`, whose remaining binder levels start at zero. Concrete instances are separate definitions with zero template parameters.
+The `Term` constructors correspond to upstream's syntax, prefixed with `T` to avoid Base constructor-name collisions. Details consumers must preserve:
 
-Core terms retain upstream's tagged syntax:
+- `Bound{value}` is an absolute binder level, not a de Bruijn distance. `Placeholder{}` preserves upstream's `-1` annotation level. Variable spelling does not establish identity.
+- `TVar.memo` explicitly reifies memoized values/types. `Core.bare` unwraps these and `TAnn` without rewriting other constructs; its idempotence is proved in [src/PROOF.bend](src/PROOF.bend).
+- Quantities are `Erased`, `Affine`, or `Reusable`; optional lambda quantities and checked type annotations are retained. Do not infer erasure from variable names.
+- `TLet.bindings` is a parallel group. Every RHS is in the outer scope; its body binds the whole group. Scope and sharing decisions belong to the consumer.
+- `TADT.excluded` retains constructor exclusions in refined types. `TMat.hit` / `miss` and `TEfq` preserve matching and empty elimination.
+- `TSub.value` distinguishes a term from a pattern through Base.Either’s `Inl` / `Inr`. The former JS adapter incorrectly emitted `Left` / `Right` for this case; the Bend decoder fixes that mismatch without changing the format-2 schema.
+- Natural literal values use decimal strings; the checker has already parsed their source spelling. Text literals are separate constructors. Counts and nonnegative levels are U32; the Bend decoder rejects out-of-range metadata instead of truncating it.
+- A definition's arity includes erased/template binders. A constructor's arity counts its own fields, while its type also includes datatype parameters.
+- Leading template binders correspond to symbolic references named `declaration.name + "~" + binder.name`. Earlier parameters must be substituted into dependent domains. Checked bodies remove these binders; their remaining levels start at zero. Concrete instances are separate definitions with no template parameters.
 
-- `Var` identifies a local by absolute binder level `i`, not its spelling `k`. If `v` is present, it carries the explicit memoized value/type; annotation placeholders such as `_` at level `-1` must be read through `v`. `Ref.k` names a declaration (or a template's symbolic parameter); `Ref.b` preserves the call's `!` hint.
-- `All` describes a dependent function type; `Lam` binds its argument; `App` applies it. Quantities are `None` (erased), `Lone` (affine), and `Many` (duplicable). Read quantities from checked type annotations as well as binders.
-- `Let` retains parallel groups: its values are in the outer scope, and its body binds all names/levels together. It is not a sequence of nested lets.
-- `ADT` applies a datatype; `r` lists excluded constructors in a refined type. `Ctr` constructs a value. `Mat` has a constructor handler `h` and remaining cases `m`; `Efq` is the empty case eliminator.
-- `Ann` retains types, and `Sub` retains substitutions, including pattern substitutions. `Typ`, `Qnt`, `Qua`, `Min`, `Eql`, `Rfl`, and `Rwt` preserve kind, quantity, and proof information. `Lit` preserves compact Nat/string literals. `Hol` remains in the syntax union, but unfinished user proofs are rejected by checking.
+The program is mutable host data, not an authenticated proof certificate. Unsafe/foreign markers are not a transitive safety analysis. Backend support and preservation proofs must state their own scope.
 
-Higher-order annotations are reified before export, so JSON serialization does not silently drop their binder functions. The complete prelude is retained; exports can be large. Reachability, erasure, closure conversion, memory layout, effect handling, and code generation belong to future consumers.
+## Host boundary and development
 
-`@unsafe` and foreign declarations retain upstream's escape hatches. Their markers are explicit declarations, not a transitive safety analysis: a dependent definition is not unconditionally proved simply because its own `unsafe` flag is false. The exported object is not a proof certificate or an authenticated artifact, and mutating it does not re-check it.
+All first-party TypeScript files and TypeScript/Incur dependencies have been removed. The remaining host files perform operations that connect Bend to its existing implementation:
 
-## Development
+- [adapter.js](host/adapter.js): upstream checking and closure reification, generic data transport, JS bootstrap, JSON/file IO and input-overwrite protection. It does not construct Core terms or declarations.
+- [effects.js](host/effects.js): Bend foreign-effect entry points. A subprocess bridges upstream's async loader to its synchronous JS IO runtime.
+- [run.js](host/run.js): attaches that adapter and launches a Bend entry point.
 
-The example covers recursive data, parallel bindings, a captured closure, template specialization, erased and duplicable parameters, arrays, and a checked equality law. Tests exercise the public boundary and failed checks, without generating or executing target code.
+[wire.bend](src/wire.bend) defines the generic transport and a structural bottom-up fold. [decode.bend](src/decode.bend) owns the mapping into Core; backends consume Core directly and never need the transport types. The fold has no arbitrary traversal fuel limit.
 
-`vendor/bend` is the unmodified Apache-2.0 upstream submodule, pinned by `upstream.json`. The full source checkout includes upstream backend files for provenance, but this library imports only `bend2/bend.ts` and its prelude; foreign sources are recorded, not loaded as code. A test checks the library's module graph for compiler/runtime dependencies. Checking refuses a different or modified tracked upstream checkout. Upgrade the gitlink and manifest together, then rerun the tests.
+The IO bridge requires Bun and incurs a worker startup plus serialization and generic-tree decoding. It is not a native C embedding of the checker. The adapter and upstream checker/compiler remain trusted; porting conversion and policy to Bend does not verify them. The decoder is typechecked and regression-tested, with small checked laws for substitution representation and metadata overflow; it does not yet have a full preservation theorem.
 
-For Bend syntax, run `bun vendor/bend/bend2/main.ts guide`. The trusted kernel is never patched. `bun run typecheck` excludes two existing upstream TS2339 narrowing errors at `bend.ts:2125` and `bend.ts:3828`, and fails on every other diagnostic. Plain `bunx tsc --noEmit` reports those two errors.
+`bun run check` checks all first-party Bend entry points and proofs without running their effects. `bun run test` runs the frontend tests; `bun run test:lowering` checks actual Yul/EVM execution and deliberately breaks a lowering to ensure its proof rejects it. Use these scripts: unfiltered `bun test` also discovers upstream's separate tool tests.
 
-The bendSVM project informed the reuse of upstream checking. No bendSVM source or bounded SVM representation is included. Backend choices remain open.
+`vendor/bend` is the unchanged Apache-2.0 upstream submodule pinned by `upstream.json`. Its TypeScript implementation remains upstream code. The host refuses a different or modified tracked checkout; upgrade the gitlink and manifest together. No bendSVM source was copied.
