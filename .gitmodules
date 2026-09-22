@@ -1,0 +1,3 @@
+[submodule "vendor/bend"]
+	path = vendor/bend
+	url = https://github.com/bendlang/bend.git

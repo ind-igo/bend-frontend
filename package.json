@@ -1,0 +1,19 @@
+{
+  "name": "bend-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/frontend.ts",
+  "scripts": {
+    "cli": "bun src/cli.ts",
+    "test": "bun test tests",
+    "typecheck": "bun scripts/typecheck.ts"
+  },
+  "dependencies": {
+    "incur": "0.5.1"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "5.9.3"
+  }
+}
