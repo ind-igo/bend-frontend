@@ -98,3 +98,7 @@ The IO bridge requires Bun and incurs a worker startup plus serialization and ge
 `bun run check` checks all first-party Bend entry points and proofs without running their effects. `bun run test` runs the frontend tests; `bun run test:lowering` checks actual Yul/EVM execution and deliberately breaks a lowering to ensure its proof rejects it. Use these scripts: unfiltered `bun test` also discovers upstream's separate tool tests.
 
 `vendor/bend` is the unchanged Apache-2.0 upstream submodule pinned by `upstream.json`. Its TypeScript implementation remains upstream code. The host refuses a different or modified tracked checkout; upgrade the gitlink and manifest together. No bendSVM source was copied.
+
+## License
+
+The frontend's own code is licensed under [MIT](LICENSE). Vendored Bend retains its [Apache-2.0 license](vendor/bend/LICENSE).
