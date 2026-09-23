@@ -67,10 +67,10 @@ Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and
 | `entry`, `inputs` | Absolute entry and loaded source/declared foreign paths |
 | `order` | Check/declaration order; laws and their fills can repeat a name |
 | `templates` | Template names and opaque specialization-key → generated-name mappings |
-| `declarations` | Every declaration, including Base and generated instances |
+| `declarations` | Every non-Base declaration and every declaration it reaches by name, including generated instances |
 | `nodes` | Number of reified term nodes; a traversal bound, not a cost or gas bound |
 
-`Algebraic` and `Definition` share a `Header` with `name`, `base`, `arity` and `typ`. Definitions also keep template counts, unsafe markers, foreign paths and optional source/checked bodies. Foreign implementations are recorded, not loaded, and need not exist. Nothing is pruned, so exports can be large: exporting the frontend itself gives millions of term nodes.
+`Algebraic` and `Definition` share a `Header` with `name`, `base`, `arity` and `typ`. Definitions also keep template counts, unsafe markers, foreign paths and optional source/checked bodies. Foreign implementations are recorded, not loaded, and need not exist. Unreached Base declarations are left out, and `order` and `templates` only name exported declarations. Exports can still be large: exporting the frontend itself gives millions of term nodes.
 
 `Term` constructors mirror upstream's syntax with a `T` prefix. Consumers must preserve:
 

@@ -47,6 +47,9 @@ test('the shared Bend core retains full-language constructs as serializable data
   expect(definition('twice').template_parameters).toBe(1);
   expect(array(array(program.templates).find(t => t.name === 'twice').instances).length).toBeGreaterThan(0);
   expect(nodes(definition('array_value').checked).some(n => n.$ === 'TRef' && n.name === 'Array.set')).toBe(true);
+  const names = array(program.declarations).map(d => d.header.name);
+  expect(names).toContain('Array.set'); // reached Base declarations stay
+  expect(names).not.toContain('String.join'); // unreached ones are not exported
 
   const annotations = nodes(definition('identity').checked).filter(n => n.$ === 'TAnn');
   expect(annotations.some(n => nodes(n.typ).some(t => t.$ === 'TAll' && t.level.value === 1

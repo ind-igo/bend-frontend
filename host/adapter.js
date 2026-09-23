@@ -66,6 +66,33 @@ function binders(term, key) {
 
 const diagnostic = error => error?.$ === 'Err' ? Bend.err_show(error) : error instanceof Error ? error.message : String(error);
 
+const lowered = def => reify(def.$ === 'ADT'
+  ? { ...def, T: Bend.term_lower(def.T), c: def.c.map(c => ({ ...c, T: Bend.term_lower(c.T) })) }
+  : { ...def, T: Bend.term_lower(def.T), v: def.v == null ? null : Bend.term_lower(def.v),
+    i: def.i?.map(f => path.resolve(f)) });
+
+// Base is most of every book and most of it is unused. Export the non-Base
+// declarations and the declarations they reach through names in their terms.
+function reachable(book) {
+  const owner = Object.create(null), template = Object.create(null), done = new Map();
+  for (const [name, def] of Object.entries(book.tlds)) if (def.$ === 'ADT') for (const c of def.c) owner[c.k] = name;
+  for (const [name, instances] of Object.entries(book.tmps)) for (const k of Object.values(instances)) template[k] = name;
+  const pending = Object.keys(book.tlds).filter(name => !book.tlds[name].b);
+  const visit = value => {
+    if (value === null || typeof value !== 'object') return;
+    if (['Ref', 'ADT', 'Ctr', 'Mat'].includes(value.$)) pending.push(value.k, owner[value.k]);
+    for (const child of Object.values(value)) visit(child);
+  };
+  while (pending.length) {
+    const name = pending.pop();
+    if (!(name in book.tlds) || done.has(name)) continue;
+    done.set(name, lowered(book.tlds[name]));
+    visit(done.get(name));
+    pending.push(template[name]);
+  }
+  return new Map(Object.keys(book.tlds).filter(name => done.has(name)).map(name => [name, done.get(name)]));
+}
+
 // The host supplies upstream data and filesystem observations. Bend owns all
 // Core construction, metadata validation, node counting, and frontend policy.
 export async function load(file) {
@@ -74,17 +101,14 @@ export async function load(file) {
     const entry = path.resolve(file), book = Bend.book_nil(), seen = new Map();
     await Bend.book_load(book, entry, '', seen);
     Bend.book_valid(book);
-    const declarations = Object.fromEntries(Object.entries(book.tlds).map(([name, def]) => [name,
-      reify(def.$ === 'ADT'
-        ? { ...def, T: Bend.term_lower(def.T), c: def.c.map(c => ({ ...c, T: Bend.term_lower(c.T) })) }
-        : { ...def, T: Bend.term_lower(def.T), v: def.v == null ? null : Bend.term_lower(def.v),
-          i: def.i?.map(f => path.resolve(f)) }),
-    ]));
-    const foreign = Object.values(declarations).flatMap(d => d.i ?? []);
+    const kept = reachable(book);
+    const templates = Object.fromEntries(Object.entries(book.tmps).filter(([name]) => kept.has(name))
+      .map(([name, instances]) => [name, Object.fromEntries(Object.entries(instances).filter(([, k]) => kept.has(k)))]));
+    const foreign = Object.values(book.tlds).flatMap(d => d.i?.map(f => path.resolve(f)) ?? []);
     const laws = path.join(path.dirname(entry), 'LAWS.bend');
     return { $: 'Done', value: encode({ ...upstream, entry: realpathSync(entry),
-      inputs: [...new Set([...seen.keys(), ...foreign])], order: book.order, templates: book.tmps,
-      declarations, holes: book.hols, open: book.open,
+      inputs: [...new Set([...seen.keys(), ...foreign])], order: book.order.filter(name => kept.has(name)), templates,
+      declarations: Object.fromEntries(kept), holes: book.hols, open: book.open,
       paired_laws_missing: path.basename(entry) === 'PROOF.bend' && existsSync(laws) && !seen.has(realpathSync(laws)),
     }) };
   } catch (error) {
