@@ -14,13 +14,6 @@ type Binding<-A: Data> is Data:
 type Function is Data:
   Function{parameters: List<&2, Nat>, body: Expr}
 
-def lookup.pick(-A: Data, value: A, fallback: A, found: Bool) -> A:
-  match found:
-    case True{}:
-      value
-    case False{}:
-      fallback
-
 # ponytail: linear environments suit this tiny profile; use an indexed scope
 # representation if large functions make traversal significant.
 def lookup(-A: Data, env: List<&2, Binding<A>>, +level: Nat, fallback: A) -> A:
@@ -28,7 +21,7 @@ def lookup(-A: Data, env: List<&2, Binding<A>>, +level: Nat, fallback: A) -> A:
     case Nil{}:
       fallback
     case Binding{key, value} <> tail:
-      lookup.pick(A, value, lookup(A, tail, level, fallback), Nat.is_eq(key, level))
+      Bool.pick(A, Nat.is_eq(key, level), value, lookup(A, tail, level, fallback))
 
 def eval(expr: Expr, +env: List<&2, Binding<U32>>) -> U32:
   match expr:
@@ -50,27 +43,20 @@ def variable(level: Nat, present: Bool) -> Result<&2, &2, String, Expr>:
     case False{}:
       Fail{"Unbound variable"}
 
-def binary.name(left: Expr, right: Expr, add: Bool, mul: Bool) ->
-  Result<&2, &2, String, Expr>:
-  match add mul:
-    case True{} _:
+def binary(name: String, base: Bool, left: Expr, right: Expr) -> Result<&2, &2, String, Expr>:
+  match name base:
+    case "U32.add" True{}:
       Done{Add{left, right}}
-    case False{} True{}:
+    case "U32.mul" True{}:
       Done{Mul{left, right}}
-    case False{} False{}:
+    case _ _:
       Fail{"Only direct Base U32.add/U32.mul calls are supported"}
-
-def binary(+name: String, base: Bool, left: Expr, right: Expr) ->
-  Result<&2, &2, String, Expr>:
-  match base:
-    case False{}:
-      Fail{"Only direct Base U32.add/U32.mul calls are supported"}
-    case True{}:
-      binary.name(left, right, String.eq(name, "U32.add"), String.eq(name, "U32.mul"))
 
 # The reader alternates between a term and its binding list. An explicit
 # structural fuel derived from the input node count keeps that traversal total
 # without unsafe or mutually recursive definitions. It is not a target gas limit.
+# Fuel bounds depth, not work: a term costs two steps (Inspect, then its task)
+# and a binder one more, so 3 * nodes + 1 suffices. See entry.found.
 type Task is Data:
   Inspect{term: Core.Term, scope: List<&2, Binding<Bool>>}
   Variable{level: Nat, scope: List<&2, Binding<Bool>>}
@@ -106,7 +92,7 @@ def classify(term: Core.Term, scope: List<&2, Binding<Bool>>) -> Task:
 def runtime(quantity: Core.Quantity) -> Result<&2, &2, String, Unit>:
   match quantity:
     case Core.Erased{}:
-      Fail{"Erased lets are outside this experiment"}
+      Fail{"Erased lets are not supported"}
     case _:
       Done{Unit{}}
 
@@ -134,31 +120,18 @@ def read(+fuel: Nat, task: Task, +declarations: List<&2, Core.Declaration>) -> R
     case _ _:
       Fail{"Unsupported runtime term"}
 
-def is_u32(term: Core.Term) -> Bool:
+def argument_error() -> String:
+  "Only runtime U32 arguments are supported"
+
+# Base U32 appears as a reference or as an ADT without arguments.
+def u32(term: Core.Term, error: String) -> Result<&2, &2, String, Unit>:
   match term:
-    case Core.TRef{name, _}:
-      String.eq(name, "U32")
-    case Core.TADT{name, Nil{}, Nil{}}:
-      String.eq(name, "U32")
-    case _:
-      False{}
-
-def argument(valid: Bool) -> Result<&2, &2, String, Unit>:
-  match valid:
-    case True{}:
+    case Core.TRef{"U32", _}:
       Done{Unit{}}
-    case False{}:
-      Fail{"This experiment only supports runtime U32 arguments"}
-
-def function.result(body: Core.Term, scope: List<&2, Binding<Bool>>, declarations: List<&2, Core.Declaration>,
-  fuel: Nat, valid: Bool) -> Result<&2, &2, String, Function>:
-  match valid:
-    case False{}:
-      Fail{"This experiment only supports a U32 result"}
-    case True{}:
-      do Result<&2, &2, String, Function>:
-        expr : Expr <- read(fuel, Inspect{body, scope}, declarations)
-        return Function{Nil{}, expr}
+    case Core.TADT{"U32", Nil{}, Nil{}}:
+      Done{Unit{}}
+    case _:
+      Fail{error}
 
 def function.prepend(level: Nat, tail: Function) -> Function:
   match tail:
@@ -168,18 +141,21 @@ def function.prepend(level: Nat, tail: Function) -> Function:
 def function(arity: Nat, typ: Core.Term, body: Core.Term, scope: List<&2, Binding<Bool>>,
   declarations: List<&2, Core.Declaration>, fuel: Nat) -> Result<&2, &2, String, Function>:
   match arity typ body:
-    case 0n result expr:
-      function.result(expr, scope, declarations, fuel, is_u32(result))
+    case 0n result value:
+      do Result<&2, &2, String, Function>:
+        _ : Unit <- u32(result, "Only a U32 result is supported")
+        lowered : Expr <- read(fuel, Inspect{value, scope}, declarations)
+        return Function{Nil{}, lowered}
     case 1n+p Core.TAll{Core.Erased{}, _, _, _, _} _:
-      Fail{"This experiment only supports runtime U32 arguments"}
+      Fail{argument_error()}
     case 1n+p Core.TAll{_, _, _, domain, rest} Core.TLam{_, Core.Bound{+level}, value, _}:
       do Result<&2, &2, String, Function>:
-        _ : Unit <- argument(is_u32(Core.bare(domain)))
+        _ : Unit <- u32(Core.bare(domain), argument_error())
         tail : Function <- function(p, Core.bare(rest), Core.bare(value), Binding{U32.to_nat(level), True{}} <> scope,
           declarations, fuel)
         return function.prepend(U32.to_nat(level), tail)
     case _ _ _:
-      Fail{"This experiment only supports runtime U32 arguments"}
+      Fail{argument_error()}
 
 def entry.found(found: Maybe<&2, Core.Declaration>, declarations: List<&2, Core.Declaration>, nodes: U32) ->
   Result<&2, &2, String, Function>:

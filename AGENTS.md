@@ -9,5 +9,5 @@
 - Keep the public output self-contained, typed, and serializable; preserve checked quantities and semantics.
 - Do not describe a checked syntax export as a verified compiler or proof certificate.
 
-- First-party implementation and proofs are Bend. Keep JavaScript limited to the upstream/IO adapter, launchers, and test harnesses; do not reintroduce TypeScript or a separate host-language lowering.
+- First-party implementation and proofs are Bend. Keep JavaScript limited to the upstream/IO adapter, launchers, and test harnesses; do not add TypeScript or a host-language lowering.
 - `src/core.bend` is the authoritative schema. Preserve every checked construct and mark export format changes explicitly.

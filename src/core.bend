@@ -94,13 +94,6 @@ def base(info: Header) -> Bool:
     case Header{_, value, _, _}:
       value
 
-def select(found: Bool, value: Declaration, rest: Maybe<&2, Declaration>) -> Maybe<&2, Declaration>:
-  match found:
-    case True{}:
-      Some{value}
-    case False{}:
-      rest
-
 # ponytail: linear lookup is enough for the examples; index declarations if
 # profiling shows repeated lookup matters for larger consumers.
 def find(declarations: List<&2, Declaration>, +wanted: String) -> Maybe<&2, Declaration>:
@@ -108,7 +101,7 @@ def find(declarations: List<&2, Declaration>, +wanted: String) -> Maybe<&2, Decl
     case Nil{}:
       None{}
     case +value <> rest:
-      select(String.eq(name(header(value)), wanted), value, find(rest, wanted))
+      Bool.pick(Maybe<&2, Declaration>, String.eq(name(header(value)), wanted), Some{value}, find(rest, wanted))
 
 def is_base(found: Maybe<&2, Declaration>) -> Bool:
   match found:

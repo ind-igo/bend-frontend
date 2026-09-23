@@ -1,6 +1,8 @@
 import Base
 
 # Generic host transport. This knows nothing about upstream terms or Core.
+# Array and object entries are Values too (End/Item/Field), not List<Value>:
+# Bend has no mutual recursion, so this lets one structural fold visit them all.
 # ponytail: a boxed tree keeps the bridge small; stream declarations if large
 # whole-book exports make transport allocations prohibitive.
 type Value<-A: Data> is Data:
@@ -15,17 +17,10 @@ type Value<-A: Data> is Data:
   Field{name: String, value: Value<A>, rest: Value<A>}
   Decoded{value: A}
 
-def pick(-A: Data, found: Bool, value: Value<A>, rest: Value<A>) -> Value<A>:
-  match found:
-    case True{}:
-      value
-    case False{}:
-      rest
-
 def field(-A: Data, fields: Value<A>, +key: String) -> Value<A>:
   match fields:
     case Field{name, value, rest}:
-      pick(A, String.eq(name, key), value, field(A, rest, key))
+      Bool.pick(Value<A>, String.eq(name, key), value, field(A, rest, key))
     case _:
       Null{}
 
@@ -57,6 +52,7 @@ def number.fit(value: U32, fits: Bool) -> Result<&2, &2, String, U32>:
     case False{}:
       Fail{"Core metadata exceeds U32 range"}
 
+# U32.read can wrap; only a value that shows as the same decimal is in range.
 def number.read(value: Maybe<&2, U32>, decimal: String) -> Result<&2, &2, String, U32>:
   match value:
     case Some{+value}:

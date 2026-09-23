@@ -39,7 +39,7 @@ bun host/run.js backends/yul/emit.bend \
   backends/yul/PROOF.bend program.calculate > build/calculate.yul
 ```
 
-`host/run.js` supplies the upstream checker/IO adapter. It can launch another Bend driver in exactly the same way. The host does not translate Core terms or declarations and knows nothing about backend lowering rules. It handles upstream closure reification and IO. [decode.bend](../src/decode.bend) performs the upstream-to-Core conversion in Bend; backend authors use Core and do not modify that transport.
+`host/run.js` launches any Bend driver the same way. Backends consume Core only; they never touch the host or the transport.
 
 ## Adding a backend
 
@@ -88,4 +88,4 @@ Proofs compose when their intermediate semantics and assumptions agree. A shared
 
 The existing theorem covers arithmetic IR → the modeled Yul U32 fragment. Its evaluator defines `Add32` and `Mul32` using Bend U32 operations. The connection to the printed masks and actual EVM semantics is tested, not formally proved.
 
-Upstream checking, host reification/transport, the Bend decoder, core-profile reading, the printer, ABI wrapper, `solc`, and bootstrap execution of our Bend tools remain outside that theorem. `Core.Program` is ordinary data, not a certificate or a proof that a chosen backend supports a program. Moving code into Bend makes it possible to extend the proof boundary; every added guarantee still needs a precise law and a checked proof.
+Outside that theorem: everything the [README](../README.md#host-boundary-and-trust) lists as trusted, plus the Core reader, the printer, the ABI wrapper and `solc`. Every added guarantee needs its own law and checked proof.

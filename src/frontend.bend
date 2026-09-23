@@ -61,3 +61,11 @@ def summary(program: Core.Program) -> String:
         ++ "\ndeclarations: " ++ Nat.show(List.length(&2, Core.Declaration, declarations))
         ++ "\nunsafeDeclarations: " ++ String.join(unsafe_names(declarations), ", ")
         ++ "\nforeignDeclarations: " ++ String.join(foreign_names(declarations), ", ")
+
+# Drivers stop with the error message instead of matching every Result.
+def or_die(-A: Data, result: Result<&2, &2, String, A>) -> IO(A):
+  match result:
+    case Fail{error}:
+      IO.die(A, 1, error)
+    case Done{value}:
+      IO.pure(A, value)

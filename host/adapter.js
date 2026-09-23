@@ -51,10 +51,14 @@ function reify(value, depth = 0) {
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 's').map(([key, child]) => {
     if (value.$ === 'Var' && key === 'v' && child != null) child = Bend.term_lower(child, depth);
-    const inner = (value.$ === 'All' && key === 'B') || (value.$ === 'Lam' && key === 'f');
-    const next = depth + (inner ? 1 : value.$ === 'Let' && key === 'f' ? value.k.length : 0);
-    return [key, reify(child, next)];
+    return [key, reify(child, depth + binders(value, key))];
   }));
+}
+
+// All.B and Lam.f are under one new binder; Let.f is under the whole group.
+function binders(term, key) {
+  if ((term.$ === 'All' && key === 'B') || (term.$ === 'Lam' && key === 'f')) return 1;
+  return term.$ === 'Let' && key === 'f' ? term.k.length : 0;
 }
 
 const diagnostic = error => error?.$ === 'Err' ? Bend.err_show(error) : error instanceof Error ? error.message : String(error);
@@ -73,7 +77,7 @@ export async function load(file) {
         : { ...def, T: Bend.term_lower(def.T), v: def.v == null ? null : Bend.term_lower(def.v),
           i: def.i?.map(f => path.resolve(f)) }),
     ]));
-    const foreign = Object.values(book.tlds).flatMap(d => d.$ === 'Def' ? d.i ?? [] : []).map(f => path.resolve(f));
+    const foreign = Object.values(declarations).flatMap(d => d.i ?? []);
     const laws = path.join(path.dirname(entry), 'LAWS.bend');
     return { $: 'Done', value: encode({ ...upstream, entry: realpathSync(entry),
       inputs: [...new Set([...seen.keys(), ...foreign])], order: book.order, templates: book.tmps,
@@ -103,12 +107,13 @@ export async function check(file) {
 export function write(output, program) {
   try {
     const file = path.resolve(output);
-    const destination = existsSync(file) ? realpathSync(file) : file;
+    // statSync follows links, so the inode check also catches symlinks and hard links.
+    // The path check protects declared foreign files that do not exist yet.
     const target = statSync(file, { throwIfNoEntry: false });
     if (array(program.inputs).some(input => {
+      if (input === file) return true;
       const source = statSync(input, { throwIfNoEntry: false });
-      return input === destination || (source && (realpathSync(input) === destination
-        || (source.dev === target?.dev && source.ino === target.ino)));
+      return source && target && source.dev === target.dev && source.ino === target.ino;
     })) throw new Error('Output would overwrite a program input');
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(program, null, 2) + '\n');

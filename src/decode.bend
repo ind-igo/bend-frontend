@@ -371,7 +371,7 @@ def program(+value: Wire.Value<Part>) -> Result<&2, &2, String, Loaded>:
     tmps : List<&2, Core.Template> <- templates(tmps)
     defs : Wire.Value<Part> <- Wire.fields(Part, get(value, "declarations"))
     defs : List<&2, Core.Declaration> <- declarations(defs)
-    count : U32 <- number(Wire.Number{Nat.show(nodes(value))})
+    count : U32 <- number(Wire.Number{Nat.show(nodes(value))}) # reuse the U32 range check
     holes : U32 <- number(get(value, "holes"))
     open : U32 <- number(get(value, "open"))
     missing : Bool <- boolean(get(value, "paired_laws_missing"))
