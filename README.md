@@ -18,7 +18,6 @@ bun run cli check tests/fixtures/PROOF.bend
 bun run cli export tests/fixtures/program.bend -o build/program.core.json
 bun run check          # check all first-party Bend entry points and proofs
 bun run test           # frontend tests
-bun run test:lowering  # Yul backend on a local EVM; requires solc and anvil
 ```
 
 Use these scripts: plain `bun test` also discovers upstream's tool tests.
@@ -26,11 +25,12 @@ Use these scripts: plain `bun test` also discovers upstream's tool tests.
 The CLI is [src/cli.bend](src/cli.bend). [host/run.js](host/run.js) launches it, or any other Bend driver, with the checker/IO adapter attached:
 
 ```sh
-mkdir -p build
-bun host/run.js backends/yul/emit.bend > build/calculate.yul
+bun host/run.js src/cli.bend check tests/fixtures/program.bend
 ```
 
-To write a backend, read [Connecting Bend to backends](docs/backends.md), then the runnable [Yul backend](backends/yul/README.md).
+`run.js` sets `BEND_ENTRY` to the driver's real path, so a driver can find the files beside it.
+
+To write a backend, read [Connecting Bend to backends](docs/backends.md). [bend-evm](https://github.com/ind-igo/bend-evm) is a backend in its own repository: it lowers to Yul for the EVM and uses this repository as a submodule.
 
 ## The Bend interface
 
