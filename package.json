@@ -9,6 +9,7 @@
     "cli": "bun host/run.js src/cli.bend",
     "test": "bun test tests",
     "test:lowering": "bun test backends/yul",
+    "test:evm": "bun test backends/evm",
     "check": "bun scripts/check.js"
   }
 }
