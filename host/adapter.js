@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Bend from '../vendor/bend/bend2/bend.ts';
+import * as Comp from '../vendor/bend/bend2/comp.ts';
 import upstream from '../upstream.json';
 
 const upstreamDirectory = fileURLToPath(new URL('../vendor/bend', import.meta.url));
+const cacheDirectory = fileURLToPath(new URL('../build/cache', import.meta.url));
 
 export function checkUpstream() {
   const git = (...args) => execFileSync('git', ['-C', upstreamDirectory, ...args], { encoding: 'utf8' }).trim();
@@ -89,12 +92,52 @@ export async function load(file) {
   }
 }
 
-// The existing upstream JS compiler bootstraps our Bend modules; it is not a
+const sha = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+
+function atomic(file, text) {
+  writeFileSync(`${file}.${process.pid}.tmp`, text);
+  renameSync(`${file}.${process.pid}.tmp`, file);
+}
+
+// The existing upstream JS compiler bootstraps our Bend tools; it is not a
 // target backend offered by this frontend. Never load the user's program here.
-export async function bend(file) {
+// Checking and compiling a tool costs seconds and gigabytes, but the output
+// only changes with the files upstream read, so keep it keyed by their hashes.
+// A library exports its pure defs, as upstream's import plugin does; a program runs main.
+export async function compiled(file, library) {
   checkUpstream();
-  await import('../vendor/bend/bend2/main.ts');
-  return (await import(file)).default;
+  const entry = realpathSync(file);
+  const out = path.join(cacheDirectory, createHash('sha256').update(`${library}:${entry}`).digest('hex').slice(0, 16));
+  const target = out + (library ? '.mjs' : '.cjs');
+  try {
+    const { commit, inputs } = JSON.parse(readFileSync(`${out}.json`, 'utf8'));
+    if (commit === upstream.commit && existsSync(target)
+      && Object.entries(inputs).every(([input, hash]) => existsSync(input) && sha(input) === hash)) return target;
+  } catch {}
+  const book = Bend.book_nil(), seen = new Map();
+  try {
+    await Bend.book_load(book, entry, '', seen);
+    Bend.book_valid(book);
+    Comp.book_owned(book, Comp.SYNTH);
+  } catch (error) {
+    throw new Error(diagnostic(error));
+  }
+  if (book.hols + book.open) throw new Error(`${entry}: the code is incomplete, and not a valid proof yet`);
+  const pure = [...new Set(book.order)].filter(name => {
+    const def = book.tlds[name];
+    return def.$ === 'Def' && def.v !== null && def.b !== true && def.x === 0 && def.i === undefined
+      && Comp.io_base(book, def.T) === null;
+  });
+  const foreign = Object.values(book.tlds).flatMap(d => d.$ === 'Def' ? d.i ?? [] : []).map(f => path.resolve(f));
+  mkdirSync(cacheDirectory, { recursive: true });
+  atomic(target, library ? Comp.js_lib(book, pure, pure) : Comp.js_book(book));
+  atomic(`${out}.json`, JSON.stringify({ commit: upstream.commit,
+    inputs: Object.fromEntries([...seen.keys(), ...foreign].map(input => [input, sha(input)])) }));
+  return target;
+}
+
+export async function bend(file) {
+  return (await import(await compiled(file.startsWith('file:') ? fileURLToPath(file) : file, true))).default;
 }
 
 export async function check(file) {

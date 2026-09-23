@@ -92,6 +92,8 @@ The JavaScript host only connects Bend to upstream:
 - [effects.js](host/effects.js): Bend foreign effects. A subprocess bridges upstream's async loader to its synchronous IO runtime.
 - [run.js](host/run.js): attaches the adapter and launches a Bend entry point.
 
+Checking and compiling our Bend tools costs seconds and gigabytes, so the adapter keeps each checked build in `build/cache`. The key is the upstream pin plus the hash of every file upstream read for that tool. A changed input rebuilds it with a full check. The user's program is never cached. `bun run check` still checks every entry point.
+
 [wire.bend](src/wire.bend) is the generic transport. [decode.bend](src/decode.bend) owns the mapping into Core; backends never see transport types.
 
 Trusted, not proved: the upstream checker and compiler, the adapter, and the decoder. The decoder is typechecked and tested, with small laws for its representation choices, but has no preservation theorem. `Core.Program` is mutable data, not a proof certificate, and `unsafe`/`foreign` markers are not a transitive safety analysis. Each backend must state the scope of its own proofs.
