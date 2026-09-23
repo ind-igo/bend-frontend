@@ -8,7 +8,7 @@ def ir.get() -> IR.Cmd:
   IR.Tail{IR.SLoad{IR.Lit{0n}}}
 
 law get:
-  {IR.run(ir.get(), IR.Returns{}, []) == Program.get() : Evm.Contract(Nat)}
+  {IR.call(ir.get(), IR.Returns{}, []) == Program.get() : Evm.Contract(Nat)}
 
 def get():
   {==}
@@ -19,7 +19,7 @@ def ir.increment() -> IR.Cmd:
     IR.Finish{IR.SStore{IR.Lit{0n}, IR.Var{1n}}}}}
 
 law increment:
-  {IR.run(ir.increment(), IR.Stops{}, []) == Program.increment() : Evm.Contract(Unit)}
+  {IR.call(ir.increment(), IR.Stops{}, []) == Program.increment() : Evm.Contract(Unit)}
 
 def increment():
   {==}
@@ -31,7 +31,7 @@ def ir.set() -> IR.Cmd:
 
 law set:
   for +p0: Nat
-  {IR.run(ir.set(), IR.Stops{}, [IR.Binding{0n, p0}]) == Program.set(p0) : Evm.Contract(Unit)}
+  {IR.call(ir.set(), IR.Stops{}, [IR.Binding{0n, p0}]) == Program.set(p0) : Evm.Contract(Unit)}
 
 def set(p0):
   {==}

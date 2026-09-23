@@ -67,7 +67,7 @@ Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and
 | `entry`, `inputs` | Absolute entry and loaded source/declared foreign paths |
 | `order` | Check/declaration order; laws and their fills can repeat a name |
 | `templates` | Template names and opaque specialization-key → generated-name mappings |
-| `declarations` | Every non-Base declaration and every declaration it reaches by name, including generated instances |
+| `declarations` | Every declaration outside Base, and every declaration these reach by name. Instances of Base templates count as Base |
 | `nodes` | Number of reified term nodes; a traversal bound, not a cost or gas bound |
 
 `Algebraic` and `Definition` share a `Header` with `name`, `base`, `arity` and `typ`. Definitions also keep template counts, unsafe markers, foreign paths and optional source/checked bodies. Foreign implementations are recorded, not loaded, and need not exist. Unreached Base declarations are left out, and `order` and `templates` only name exported declarations. Exports can still be large: exporting the frontend itself gives millions of term nodes.
@@ -92,7 +92,7 @@ The JavaScript host only connects Bend to upstream:
 - [effects.js](host/effects.js): Bend foreign effects. A subprocess bridges upstream's async loader to its synchronous IO runtime.
 - [run.js](host/run.js): attaches the adapter and launches a Bend entry point.
 
-Checking and compiling our Bend tools costs seconds and gigabytes, so the adapter keeps each checked build in `build/cache`. The key is the upstream pin plus the hash of every file upstream read for that tool. A changed input rebuilds it with a full check. The user's program is never cached. `bun run check` still checks every entry point.
+Checking and compiling our Bend tools costs seconds and gigabytes, so the adapter keeps each checked build in `build/cache`. The key is the upstream pin plus the hash of the adapter and of every file upstream read for that tool. A changed input rebuilds it with a full check. The user's program is never cached. `bun run check` still checks every entry point.
 
 [wire.bend](src/wire.bend) is the generic transport. [decode.bend](src/decode.bend) owns the mapping into Core; backends never see transport types.
 

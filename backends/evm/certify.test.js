@@ -26,6 +26,8 @@ test('a certificate for the wrong IR does not check', () => {
       ['IR.Lit{7n}', 'IR.Lit{8n}', 'set'],
       ['IR.SStore{IR.Lit{0n}, IR.Var{1n}}', 'IR.SStore{IR.Lit{0n}, IR.Var{0n}}', 'increment'],
       ['IR.Tail{IR.SLoad{IR.Lit{0n}}}', 'IR.Tail{IR.SLoad{IR.Lit{1n}}}', 'get'],
+      // An unbound Var reads as 0, like the source's literal key, so only the scope check catches it.
+      ['IR.Tail{IR.SLoad{IR.Lit{0n}}}', 'IR.Tail{IR.SLoad{IR.Var{5n}}}', 'get'],
     ]) {
       expect(good).toContain(from);
       writeFileSync(cert, good.replace(from, to));
@@ -33,6 +35,10 @@ test('a certificate for the wrong IR does not check', () => {
       expect(checked.exitCode).not.toBe(0);
       expect(checked.stdout.toString() + checked.stderr.toString()).toContain(`Location: ${law}`);
     }
+    // The copied Evm.bend and ir.bend could define different semantics.
+    const copy = bend('host/run.js', 'backends/evm/certify.bend', path.join(dir, 'counter/program.bend'), 'get');
+    expect(copy.exitCode).not.toBe(0);
+    expect(copy.stderr.toString()).toContain("must import this backend's Evm.bend");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

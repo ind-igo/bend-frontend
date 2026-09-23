@@ -101,3 +101,66 @@ def run(cmd: Cmd, +out: Output, +env: List<&2, Binding>) -> Evm.Contract(value(o
       Evm.Contract.pure(Unit, Unit{})
     case _ o:
       abort(value(o))
+
+# Scope checks: an unbound Var would read as 0 in lookup and could hide a
+# wrong IR behind a literal 0 in the source.
+def has(levels: List<&2, Nat>, +level: Nat) -> Bool:
+  match levels:
+    case Nil{}:
+      False{}
+    case k <> rest:
+      Bool.or(Nat.is_eq(k, level), has(rest, level))
+
+def closed.expr(e: Expr, +scope: List<&2, Nat>) -> Bool:
+  match e:
+    case Lit{_}:
+      True{}
+    case Var{level}:
+      has(scope, level)
+
+def closed.two(left: Expr, right: Expr, +scope: List<&2, Nat>) -> Bool:
+  Bool.and(closed.expr(left, scope), closed.expr(right, scope))
+
+def closed.word(w: Word, +scope: List<&2, Nat>) -> Bool:
+  match w:
+    case SLoad{key}:
+      closed.expr(key, scope)
+    case Caller{}:
+      True{}
+    case Add{left, right}:
+      closed.two(left, right, scope)
+
+def closed.effect(e: Effect, +scope: List<&2, Nat>) -> Bool:
+  match e:
+    case SStore{key, value}:
+      closed.two(key, value, scope)
+    case Require{Eq{left, right}}:
+      closed.two(left, right, scope)
+    case Require{Lt{left, right}}:
+      closed.two(left, right, scope)
+
+def closed(cmd: Cmd, +scope: List<&2, Nat>) -> Bool:
+  match cmd:
+    case Bind{w, level, body}:
+      Bool.and(closed.word(w, scope), closed(body, level <> scope))
+    case Then{e, body}:
+      Bool.and(closed.effect(e, scope), closed(body, scope))
+    case Return{v}:
+      closed.expr(v, scope)
+    case Tail{w}:
+      closed.word(w, scope)
+    case Finish{e}:
+      closed.effect(e, scope)
+    case Stop{}:
+      True{}
+
+def levels(env: List<&2, Binding>) -> List<&2, Nat>:
+  match env:
+    case Nil{}:
+      Nil{}
+    case Binding{level, _} <> rest:
+      level <> levels(rest)
+
+# An entry point: reverts unless every variable is bound, then runs.
+def call(+cmd: Cmd, +out: Output, +env: List<&2, Binding>) -> Evm.Contract(value(out)):
+  Bool.pick(Evm.Contract(value(out)), closed(cmd, levels(env)), run(cmd, out, env), abort(value(out)))

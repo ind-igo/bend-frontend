@@ -71,13 +71,14 @@ const lowered = def => reify(def.$ === 'ADT'
   : { ...def, T: Bend.term_lower(def.T), v: def.v == null ? null : Bend.term_lower(def.v),
     i: def.i?.map(f => path.resolve(f)) });
 
-// Base is most of every book and most of it is unused. Export the non-Base
-// declarations and the declarations they reach through names in their terms.
+// Base is most of every book and most of it is unused. Export the declarations
+// outside Base and the declarations they reach through names in their terms.
+// Instances of Base templates are Base, although upstream does not mark them.
 function reachable(book) {
   const owner = Object.create(null), template = Object.create(null), done = new Map();
   for (const [name, def] of Object.entries(book.tlds)) if (def.$ === 'ADT') for (const c of def.c) owner[c.k] = name;
   for (const [name, instances] of Object.entries(book.tmps)) for (const k of Object.values(instances)) template[k] = name;
-  const pending = Object.keys(book.tlds).filter(name => !book.tlds[name].b);
+  const pending = Object.keys(book.tlds).filter(name => !book.tlds[name].b && !book.tlds[template[name]]?.b);
   const visit = value => {
     if (value === null || typeof value !== 'object') return;
     if (['Ref', 'ADT', 'Ctr', 'Mat'].includes(value.$)) pending.push(value.k, owner[value.k]);
@@ -116,7 +117,8 @@ export async function load(file) {
   }
 }
 
-const sha = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+const hash = data => createHash('sha256').update(data).digest('hex');
+const sha = file => hash(readFileSync(file));
 
 function atomic(file, text) {
   writeFileSync(`${file}.${process.pid}.tmp`, text);
@@ -131,32 +133,42 @@ function atomic(file, text) {
 export async function compiled(file, library) {
   checkUpstream();
   const entry = realpathSync(file);
-  const out = path.join(cacheDirectory, createHash('sha256').update(`${library}:${entry}`).digest('hex').slice(0, 16));
+  const out = path.join(cacheDirectory, hash(`${library}:${entry}`).slice(0, 16));
   const target = out + (library ? '.mjs' : '.cjs');
   try {
-    const { commit, inputs } = JSON.parse(readFileSync(`${out}.json`, 'utf8'));
-    if (commit === upstream.commit && existsSync(target)
-      && Object.entries(inputs).every(([input, hash]) => existsSync(input) && sha(input) === hash)) return target;
+    const { commit, output, inputs } = JSON.parse(readFileSync(`${out}.json`, 'utf8'));
+    if (commit === upstream.commit && existsSync(target) && sha(target) === output
+      && Object.entries(inputs).every(([input, digest]) => existsSync(input) && sha(input) === digest)) return target;
   } catch {}
   const book = Bend.book_nil(), seen = new Map();
+  let inputs;
   try {
     await Bend.book_load(book, entry, '', seen);
+    // Hash what was just read, before the slow check, so an edit during the
+    // build makes the next run rebuild. This file decides what gets emitted.
+    const foreign = Object.values(book.tlds).flatMap(d => d.$ === 'Def' ? d.i ?? [] : []).map(f => path.resolve(f));
+    inputs = Object.fromEntries([...seen.keys(), ...foreign, fileURLToPath(import.meta.url)].map(input => [input, sha(input)]));
+    const laws = path.join(path.dirname(entry), 'LAWS.bend');
+    if (path.basename(entry) === 'PROOF.bend' && existsSync(laws) && !seen.has(realpathSync(laws))) {
+      throw new Error('PROOF.bend must import ./LAWS.bend');
+    }
     Bend.book_valid(book);
     Comp.book_owned(book, Comp.SYNTH);
   } catch (error) {
     throw new Error(diagnostic(error));
   }
   if (book.hols + book.open) throw new Error(`${entry}: the code is incomplete, and not a valid proof yet`);
+  if (!library && book.tlds.main?.$ !== 'Def') throw new Error(`${entry}: no main to run`);
   const pure = [...new Set(book.order)].filter(name => {
     const def = book.tlds[name];
     return def.$ === 'Def' && def.v !== null && def.b !== true && def.x === 0 && def.i === undefined
       && Comp.io_base(book, def.T) === null;
   });
-  const foreign = Object.values(book.tlds).flatMap(d => d.$ === 'Def' ? d.i ?? [] : []).map(f => path.resolve(f));
   mkdirSync(cacheDirectory, { recursive: true });
-  atomic(target, library ? Comp.js_lib(book, pure, pure) : Comp.js_book(book));
-  atomic(`${out}.json`, JSON.stringify({ commit: upstream.commit,
-    inputs: Object.fromEntries([...seen.keys(), ...foreign].map(input => [input, sha(input)])) }));
+  const code = library ? Comp.js_lib(book, pure, pure) : Comp.js_book(book);
+  atomic(target, code);
+  // The output hash ties this record to this target, even when builds race.
+  atomic(`${out}.json`, JSON.stringify({ commit: upstream.commit, output: hash(code), inputs }));
   return target;
 }
 
