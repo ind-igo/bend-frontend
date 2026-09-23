@@ -7,7 +7,7 @@ import { check, array, bend, encode } from 'bend-frontend';
 const root = path.resolve(import.meta.dir, '..');
 const temp = mkdtempSync(path.join(tmpdir(), 'bend-frontend-'));
 let program;
-beforeAll(async () => { program = await check(path.join(root, 'examples/program.bend')); }, 30_000);
+beforeAll(async () => { program = await check(path.join(root, 'tests/fixtures/program.bend')); }, 30_000);
 afterAll(() => rmSync(temp, { recursive: true, force: true }));
 
 function nodes(value) {
@@ -62,7 +62,7 @@ test('the shared Bend core retains full-language constructs as serializable data
 });
 
 test('checks proofs and libraries without a main, and isolates check calls', async () => {
-  const proof = await check(path.join(root, 'examples/PROOF.bend'));
+  const proof = await check(path.join(root, 'tests/fixtures/PROOF.bend'));
   const answer = array(proof.declarations).find(d => d.header.name.endsWith('LAWS.answer'));
   expect(answer?.$).toBe('Definition');
   expect(answer.header.typ.$).toBe('TEql');

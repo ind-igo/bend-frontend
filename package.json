@@ -8,7 +8,7 @@
   "scripts": {
     "cli": "bun host/run.js src/cli.bend",
     "test": "bun test tests",
-    "test:lowering": "bun test experiments/yul",
+    "test:lowering": "bun test backends/yul",
     "check": "bun scripts/check.js"
   }
 }

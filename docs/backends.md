@@ -2,7 +2,7 @@
 
 A backend is a Bend consumer of `Core.Program`. The frontend checks the full upstream language once; each backend decides which runtime features it supports and how to represent them. There is no backend registry to implement or modify.
 
-The working reference is [the Yul example](../experiments/yul/README.md). It accepts a deliberately small arithmetic profile, lowers it in Bend, proves a preservation theorem, and executes the printed result on a local EVM.
+The working reference is [the Yul example](../backends/yul/README.md). It accepts a deliberately small arithmetic profile, lowers it in Bend, proves a preservation theorem, and executes the printed result on a local EVM.
 
 ## The connection
 
@@ -31,12 +31,12 @@ def compile(program: Core.Program, name: String) -> Result<&2, &2, String, Strin
 
 `name` is a canonical checked declaration name. Checking `program.bend` directly exposes `calculate`; importing it from `PROOF.bend` exposes `program.calculate`. Use declaration headers instead of guessing names from source text.
 
-[emit.bend](../experiments/yul/emit.bend) is the complete driver: read arguments, call `Frontend.check`, call `Yul.compile`, report errors, and write the result. Run it from the repository root:
+[emit.bend](../backends/yul/emit.bend) is the complete driver: read arguments, call `Frontend.check`, call `Yul.compile`, report errors, and write the result. Run it from the repository root:
 
 ```sh
 mkdir -p build
-bun host/run.js experiments/yul/emit.bend \
-  experiments/yul/PROOF.bend program.calculate > build/calculate.yul
+bun host/run.js backends/yul/emit.bend \
+  backends/yul/PROOF.bend program.calculate > build/calculate.yul
 ```
 
 `host/run.js` supplies the upstream checker/IO adapter. It can launch another Bend driver in exactly the same way. The host does not translate Core terms or declarations and knows nothing about backend lowering rules. It handles upstream closure reification and IO. [decode.bend](../src/decode.bend) performs the upstream-to-Core conversion in Bend; backend authors use Core and do not modify that transport.
@@ -44,7 +44,7 @@ bun host/run.js experiments/yul/emit.bend \
 ## Adding a backend
 
 1. **Define acceptance.** Select an entry, inspect its checked type, and determine its reachable runtime requirements. Reject unsupported calls, types, quantities, or effects explicitly. Checking a full Bend source file does not imply that every target can execute it. Never treat `unsafe: false` alone as evidence that dependencies are safe.
-2. **Choose the runtime IR.** Reuse [u32.bend](../experiments/u32.bend) if the example's variables, lets, add, and multiply are sufficient. For richer programs, add the constructs the next example needs. Full core includes proofs and dependent types; it is not already a machine IR.
+2. **Choose the runtime IR.** Reuse [u32.bend](../backends/u32.bend) if the example's variables, lets, add, and multiply are sufficient. For richer programs, add the constructs the next example needs. Full core includes proofs and dependent types; it is not already a machine IR.
 3. **Define the target AST and its meaning.** State what its operations, values, scopes, errors, and effects mean. Make integer width and overflow explicit. A precise small fragment is useful; an AST named after a machine is not by itself a complete machine model.
 4. **Implement the lowering in Bend.** Return target data rather than building strings while deciding semantics. Keep target-independent transformations separate when there is actual reuse.
 5. **State and prove preservation.** Relate the input and output evaluators, including representation changes and acceptance conditions. Keep statements in `LAWS.bend` and implementations in `PROOF.bend`.
@@ -72,7 +72,7 @@ law preserves:
   {Yul.eval(Yul.lower(expr), env) == Source.eval(expr, env) : U32}
 ```
 
-Read [PROOF.bend](../experiments/yul/PROOF.bend): the variable case reduces directly; add and multiply use the induction hypotheses for their children; the binding case first equates the bound values and then uses the body theorem under the extended environment. The example also connects its readable arithmetic IR to the original Bend function for all inputs. A test replaces multiplication with addition and checks that the universal theorem fails.
+Read [PROOF.bend](../backends/yul/PROOF.bend): the variable case reduces directly; add and multiply use the induction hypotheses for their children; the binding case first equates the bound values and then uses the body theorem under the extended environment. The example also connects its readable arithmetic IR to the original Bend function for all inputs. A test replaces multiplication with addition and checks that the universal theorem fails.
 
 For a different representation, the statement may instead be:
 

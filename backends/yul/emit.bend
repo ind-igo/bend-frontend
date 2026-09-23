@@ -25,7 +25,7 @@ def run(file: String, name: String) -> IO(Unit):
 def args(values: List<String>) -> IO(Unit):
   match values:
     case Nil{}:
-      run("experiments/yul/PROOF.bend", "program.calculate")
+      run("backends/yul/PROOF.bend", "program.calculate")
     case file <> name <> Nil{}:
       run(file, name)
     case _:

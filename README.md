@@ -14,8 +14,8 @@ Requires Git and Bun (tested with Bun 1.3.12). There are no package dependencies
 
 ```sh
 git submodule update --init
-bun run cli check examples/PROOF.bend
-bun run cli export examples/program.bend -o build/program.core.json
+bun run cli check tests/fixtures/PROOF.bend
+bun run cli export tests/fixtures/program.bend -o build/program.core.json
 bun run check
 bun run test
 ```
@@ -24,11 +24,11 @@ The CLI implementation is [src/cli.bend](src/cli.bend). The package command invo
 
 ```sh
 mkdir -p build
-bun host/run.js experiments/yul/emit.bend > build/calculate.yul
+bun host/run.js backends/yul/emit.bend > build/calculate.yul
 bun run test:lowering  # additionally requires solc and anvil
 ```
 
-Start with [Connecting Bend to backends](docs/backends.md) for the architecture, extension steps, proof boundaries, and EVM/WASM/Zig/ZK considerations. The [Yul walkthrough](experiments/yul/README.md) is a runnable example.
+Start with [Connecting Bend to backends](docs/backends.md) for the architecture, extension steps, proof boundaries, and EVM/WASM/Zig/ZK considerations. The [Yul walkthrough](backends/yul/README.md) is a runnable example.
 
 ## The Bend interface
 
@@ -47,7 +47,7 @@ JavaScript callers can use the same Bend frontend through the host convenience A
 ```js
 import { check, array } from 'bend-frontend';
 
-const program = await check('examples/program.bend');
+const program = await check('tests/fixtures/program.bend');
 console.log(array(program.declarations).map(d => d.header.name));
 ```
 

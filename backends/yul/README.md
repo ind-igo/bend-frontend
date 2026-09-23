@@ -16,12 +16,12 @@ From the repository root:
 ```sh
 bun run check
 mkdir -p build
-bun host/run.js experiments/yul/emit.bend > build/calculate.yul
+bun host/run.js backends/yul/emit.bend > build/calculate.yul
 solc --strict-assembly --evm-version shanghai --bin build/calculate.yul
 bun run test:lowering
 
 # Select another checked function:
-bun host/run.js experiments/yul/emit.bend experiments/yul/PROOF.bend program.scopes
+bun host/run.js backends/yul/emit.bend backends/yul/PROOF.bend program.scopes
 ```
 
 Emission requires Bun and Git. The execution test needs `solc` and `anvil` (tested with 0.8.33 and 1.5.1). It creates and stops a local node, simulates creation/calls without submitting transactions, and checks ordinary results, U32 overflow, nested/parallel scopes, malformed calldata, and call value. Another test deliberately changes multiplication to addition and requires the preservation theorem to fail.
