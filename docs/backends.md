@@ -2,7 +2,7 @@
 
 A backend is a Bend consumer of `Core.Program`. The frontend checks the full upstream language once; each backend decides which runtime features it supports and how to represent them. There is no backend registry to implement or modify.
 
-A backend lives in its own repository and uses this one as a git submodule. The working reference is [bend-evm](https://github.com/ind-igo/bend-evm). It reads contracts written in a small `Contract` monad, lowers them to a Yul fragment in Bend, proves that the lowering preserves every command, and runs the printed Counter on a local EVM.
+A backend lives in its own repository and uses this one as a git submodule. The working reference is [bend-evm](https://github.com/ind-igo/bend-evm). It reads contracts written in a small `Contract` monad, lowers them to a Yul fragment in Bend, proves that the lowering preserves every command, and runs the printed Counter and token on a local EVM.
 
 ## The connection
 
@@ -42,7 +42,7 @@ bun vendor/bend-frontend/host/run.js src/compile.bend \
 ## Adding a backend
 
 1. **Define acceptance.** Select an entry, inspect its checked type, and determine its reachable runtime requirements. Reject unsupported calls, types, quantities, or effects explicitly. Checking a full Bend source file does not imply that every target can execute it. Never treat `unsafe: false` alone as evidence that dependencies are safe.
-2. **Choose the runtime IR.** Reuse [ir.bend](https://github.com/ind-igo/bend-evm/blob/main/src/ir.bend) if its storage, caller, checked add, and require are sufficient. For richer programs, add the constructs the next example needs. Full core includes proofs and dependent types; it is not already a machine IR.
+2. **Choose the runtime IR.** Reuse [ir.bend](https://github.com/ind-igo/bend-evm/blob/main/src/ir.bend) if its storage (plain slots and mappings), caller, checked add and sub, require, and events are sufficient. For richer programs, add the constructs the next example needs. Full core includes proofs and dependent types; it is not already a machine IR.
 3. **Define the target AST and its meaning.** State what its operations, values, scopes, errors, and effects mean. Make integer width and overflow explicit. A precise small fragment is useful; an AST named after a machine is not by itself a complete machine model.
 4. **Implement the lowering in Bend.** Return target data rather than building strings while deciding semantics. Keep target-independent transformations separate when there is actual reuse.
 5. **State and prove preservation.** Relate the input and output evaluators, including representation changes and acceptance conditions. Keep statements in `LAWS.bend` and implementations in `PROOF.bend`.
