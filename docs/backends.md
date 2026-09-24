@@ -61,18 +61,20 @@ There is no need to copy Solana's specific size, stack, or recursion limits. A b
 
 ## The proof pattern
 
-The runnable example proves that the actual `lower` function preserves the outcome of every IR command, for every output kind, environment and state:
+The runnable example proves that the actual `lower` function preserves the outcome of every IR command, for every output kind, environment, continuation and state:
 
 ```bend
 law preserves:
   for +cmd: IR.Cmd
   for +out: IR.Output
   for +env: List<&2, IR.Binding>
+  for R: Data
+  for k: IR.value(out) -> Evm.State -> Evm.Outcome<R>
   for +s: Evm.State
-  {Yul.exec(Yul.lower(cmd, out), out, env, s) == IR.run(cmd, out, env, s) : Evm.Outcome<IR.value(out)>}
+  {Yul.exec(Yul.lower(cmd, out), out, env, R, k, s) == IR.run(cmd, out, env, R, k, s) : Evm.Outcome<R>}
 ```
 
-Read [PROOF.bend](https://github.com/ind-igo/bend-evm/blob/main/src/PROOF.bend): each case matches the command and the state, so storage reads and writes compute, and the body uses the induction hypothesis. Checked add uses one lemma: the Yul guard `gt(b, sub(not(0), a))` is zero exactly when `a + b < limit`. A certificate connects each contract function to its IR for all inputs. A test changes the lowering and checks that the theorem fails.
+The `Contract` monad passes its result and state to a continuation `k`. Each check (overflow, `require`) is then a `Bool.pick` at the top of the normal form, not a match that is stuck inside a bind. So a contract law can state every outcome, for symbolic inputs, addresses and storage, and `{==}` proves it with no lemmas. Read [PROOF.bend](https://github.com/ind-igo/bend-evm/blob/main/src/PROOF.bend): each case matches the command, and both runs pass the same state and `k` to the induction hypothesis. Only the checks need lemmas. For example, the Yul guard `gt(b, sub(not(0), a))` is zero exactly when `a + b < limit`. A certificate connects each contract function to its IR for all inputs. A test changes the lowering and checks that the theorem fails.
 
 For a different representation, the statement may instead be:
 
