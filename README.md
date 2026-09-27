@@ -56,11 +56,16 @@ console.log(array(program.declarations).map(d => d.header.name));
 
 ## Export format 3
 
-Format 3 (upstream Bend 2.0.32) changes two constructors: `TSub.value` is now `TSub.pattern`, and `Literal` adds `Word` and `Float`.
+Format 3 (upstream Bend 2.0.32) changes these:
 
-[src/core.bend](src/core.bend) is the authoritative schema. `check` returns the same constructor-shaped `Core.Program` that Bend consumers receive; `export` writes it as JSON. It round-trips through `JSON.stringify`/`JSON.parse`: no functions, source spans, upstream `Book` or `BigInt` values.
+- A U32 or F32 literal was a `TCtr` of `U32`/`F32` over a 32-constructor `WCon`/`WNil` chain. It is now `TLit{Word{value}}` or `TLit{Float{bits}}`. A `U32{..}` written in the source is still a `TCtr`, so a consumer must accept both forms.
+- `TSub.value` (`Inl{term}` or `Inr{pattern}`) is now `TSub.pattern`: upstream only binds patterns there.
+- A `Definition` has a `namespace`.
+- Unfilled laws count as proof holes.
 
-Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and constructors carry a `$` tag without a namespace (`TLit`, not `core.TLit`). The host `array` helper converts lists for JS callers.
+[src/core.bend](src/core.bend) is the authoritative schema. `check` returns a constructor-shaped `Core.Program` with the same fields that Bend consumers receive; `export` writes it as JSON. It round-trips through `JSON.stringify`/`JSON.parse`: no functions, source spans, upstream `Book` or `BigInt` values.
+
+Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and constructors carry a `$` tag without a namespace (`TLit`, not `core.TLit`). This output is for JS and JSON: Bend code compiled to JS (the `bend` helper) tags a constructor with its namespace from the root file (upstream #1105), so do not pass `check` output back into it. The host `array` helper converts lists for JS callers.
 
 | Program field | Meaning |
 | --- | --- |
@@ -72,7 +77,7 @@ Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and
 | `declarations` | Every declaration outside Base, and every declaration these reach by name. Instances of Base templates count as Base |
 | `nodes` | Number of reified term nodes; a traversal bound, not a cost or gas bound |
 
-`Algebraic` and `Definition` share a `Header` with `name`, `base`, `arity` and `typ`. Definitions also keep template counts, unsafe markers, foreign paths and optional source/checked bodies. Foreign implementations are recorded, not loaded, and need not exist. Unreached Base declarations are left out, and `order` and `templates` only name exported declarations. Exports can still be large: exporting the frontend itself gives millions of term nodes.
+`Algebraic` and `Definition` share a `Header` with `name`, `base`, `arity` and `typ`. Definitions also keep template counts, unsafe markers, foreign paths, the namespace and optional source/checked bodies. The namespace is the declaring file's path from the entry's directory, without `.bend` (`""` for the entry); upstream reads `CID(Name)` and `FID(Name)` in a foreign file in it. Foreign implementations are recorded, not loaded, and need not exist. Unreached Base declarations are left out, and `order` and `templates` only name exported declarations. Exports can still be large: exporting the frontend itself gives millions of term nodes.
 
 `Term` constructors mirror upstream's syntax with a `T` prefix. Consumers must preserve:
 

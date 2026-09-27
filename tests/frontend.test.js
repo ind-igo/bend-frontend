@@ -74,6 +74,7 @@ test('checks proofs and libraries without a main, and isolates check calls', asy
   const answer = array(proof.declarations).find(d => d.header.name.endsWith('LAWS.answer'));
   expect(answer?.$).toBe('Definition');
   expect(answer.header.typ.$).toBe('TEql');
+  expect(answer.namespace).toBe('LAWS'); // the imported file's path from the root
   expect(nodes(answer.checked).some(n => n.$ === 'TRfl')).toBe(true);
   const file = source('library.bend', 'type Token is Data:\n  Token{}\ndef token() -> Token:\n  Token{}\n');
   const library = await check(file);
@@ -118,6 +119,10 @@ def effect() -> IO(Unit):
   expect(array(result.inputs)).toContain(realpathSync(effect));
   rmSync(effect);
   expect(cli('export', file, '-o', path.join(temp, 'effects.json')).exitCode).toBe(0);
+  // temp may sit under a link (/var is /private/var on macOS); a missing foreign file is still protected.
+  const overwrite = cli('export', file, '-o', effect);
+  expect(overwrite.exitCode).not.toBe(0);
+  expect(overwrite.stderr.toString() + overwrite.stdout.toString()).toContain('overwrite a program input');
 }, 90_000);
 
 test('the Bend CLI checks/exports, exits, and protects input files', () => {

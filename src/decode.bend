@@ -301,6 +301,14 @@ def foreign(value: Wire.Value<Part>) -> Result<&2, &2, String, List<&2, String>>
     case value:
       strings(value)
 
+# Upstream reads CID(Name) and FID(Name) in a foreign file in this namespace.
+def namespace(value: Wire.Value<Part>) -> Result<&2, &2, String, String>:
+  match value:
+    case Wire.Null{}:
+      Done{""}
+    case value:
+      text(value)
+
 def declaration.tag(tag: String, header: Core.Header, +value: Wire.Value<Part>) ->
   Result<&2, &2, String, Core.Declaration>:
   match tag:
@@ -315,9 +323,10 @@ def declaration.tag(tag: String, header: Core.Header, +value: Wire.Value<Part>) 
         parameters : U32 <- number(get(value, "x"))
         unsafe : Bool <- flag(get(value, "u"))
         imports : List<&2, String> <- foreign(get(value, "i"))
+        space : String <- namespace(get(value, "m"))
         source : Maybe<&2, Core.Term> <- Wire.optional(Part, Core.Term, term, get(value, "v"))
         checked : Maybe<&2, Core.Term> <- Wire.optional(Part, Core.Term, term, get(value, "e"))
-        return Core.Definition{header, parameters, unsafe, imports, source, checked}
+        return Core.Definition{header, parameters, unsafe, imports, space, source, checked}
     case other:
       Fail{"Unknown upstream declaration: " ++ other}
 

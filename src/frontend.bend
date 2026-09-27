@@ -30,7 +30,7 @@ def unsafe_names(declarations: List<&2, Core.Declaration>) -> List<&2, String>:
   match declarations:
     case Nil{}:
       Nil{}
-    case Core.Definition{info, _, True{}, _, _, _} <> tail:
+    case Core.Definition{info, _, True{}, _, _, _, _} <> tail:
       Core.name(info) <> unsafe_names(tail)
     case _ <> tail:
       unsafe_names(tail)
@@ -39,7 +39,7 @@ def foreign_names(declarations: List<&2, Core.Declaration>) -> List<&2, String>:
   match declarations:
     case Nil{}:
       Nil{}
-    case Core.Definition{info, _, _, _ <> _, _, _} <> tail:
+    case Core.Definition{info, _, _, _ <> _, _, _, _} <> tail:
       Core.name(info) <> foreign_names(tail)
     case _ <> tail:
       foreign_names(tail)

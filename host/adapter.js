@@ -185,7 +185,10 @@ export async function check(file) {
 
 export function write(output, program) {
   try {
-    const file = path.resolve(output);
+    // Upstream records inputs by real path, so compare the output's real path.
+    const directory = path.dirname(path.resolve(output));
+    mkdirSync(directory, { recursive: true });
+    const file = path.join(realpathSync(directory), path.basename(output));
     // statSync follows links, so the inode check also catches symlinks and hard links.
     // The path check protects declared foreign files that do not exist yet.
     const target = statSync(file, { throwIfNoEntry: false });
@@ -194,7 +197,6 @@ export function write(output, program) {
       const source = statSync(input, { throwIfNoEntry: false });
       return source && target && source.dev === target.dev && source.ino === target.ino;
     })) throw new Error('Output would overwrite a program input');
-    mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(program, bare, 2) + '\n');
     return { $: 'Done', value: { $: 'Unit' } };
   } catch (error) {

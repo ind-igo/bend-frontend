@@ -56,7 +56,7 @@ type Declaration is Data:
   Algebraic{header: Header, parameters: U32, quantity_parameters: U32,
     constructors: List<&2, Constructor>}
   Definition{header: Header, template_parameters: U32, unsafe: Bool,
-    foreign: List<&2, String>, source: Maybe<&2, Term>, checked: Maybe<&2, Term>}
+    foreign: List<&2, String>, namespace: String, source: Maybe<&2, Term>, checked: Maybe<&2, Term>}
 
 type Instance is Data:
   Instance{key: String, name: String}
@@ -83,7 +83,7 @@ def header(declaration: Declaration) -> Header:
   match declaration:
     case Algebraic{info, _, _, _}:
       info
-    case Definition{info, _, _, _, _, _}:
+    case Definition{info, _, _, _, _, _, _}:
       info
 
 def name(info: Header) -> String:
