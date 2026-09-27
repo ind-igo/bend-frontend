@@ -43,7 +43,7 @@ result : Result<&2, &2, String, Core.Program> <- Frontend.check(file)
 program : Core.Program <- Frontend.or_die(Core.Program, result)
 ```
 
-`Frontend.finish` is the pure step from host data to an accepted program. It runs [decode.bend](src/decode.bend), which translates upstream terms, patterns, declarations and templates, validates metadata and counts term nodes. It rejects proof holes, open laws, and a `PROOF.bend` that does not import its adjacent `LAWS.bend`.
+`Frontend.finish` is the pure step from host data to an accepted program. It runs [decode.bend](src/decode.bend), which translates upstream terms, patterns, declarations and templates, validates metadata and counts term nodes. It rejects proof holes, unfilled laws, and a `PROOF.bend` that does not import its adjacent `LAWS.bend`.
 
 JavaScript callers can use the same frontend:
 
@@ -54,15 +54,17 @@ const program = await check('tests/fixtures/program.bend');
 console.log(array(program.declarations).map(d => d.header.name));
 ```
 
-## Export format 2
+## Export format 3
+
+Format 3 (upstream Bend 2.0.32) changes two constructors: `TSub.value` is now `TSub.pattern`, and `Literal` adds `Word` and `Float`.
 
 [src/core.bend](src/core.bend) is the authoritative schema. `check` returns the same constructor-shaped `Core.Program` that Bend consumers receive; `export` writes it as JSON. It round-trips through `JSON.stringify`/`JSON.parse`: no functions, source spans, upstream `Book` or `BigInt` values.
 
-Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and constructors carry a `$` tag. The host `array` helper converts lists for JS callers.
+Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and constructors carry a `$` tag without a namespace (`TLit`, not `core.TLit`). The host `array` helper converts lists for JS callers.
 
 | Program field | Meaning |
 | --- | --- |
-| `format`, `version` | `bend-frontend.core`, `2` |
+| `format`, `version` | `bend-frontend.core`, `3` |
 | `repository`, `commit` | Pinned upstream identity |
 | `entry`, `inputs` | Absolute entry and loaded source/declared foreign paths |
 | `order` | Check/declaration order; laws and their fills can repeat a name |
@@ -79,8 +81,8 @@ Lists are `Con{head, tail}` / `Nil{}`, options are `Some{value}` / `None{}`, and
 - Quantities are `Erased`, `Affine` or `Reusable`. Lambda quantities and checked annotations are kept. Do not infer erasure from names.
 - `TLet.bindings` is a parallel group: every RHS is in the outer scope, and the body binds the whole group.
 - `TADT.excluded` keeps constructor exclusions in refined types. `TMat.hit` / `miss` and `TEfq` keep matching and empty elimination.
-- `TSub.value` is `Inl{term}` or `Inr{pattern}`.
-- Natural literals are decimal strings; text literals are separate. Counts and nonnegative levels are U32, and out-of-range metadata is rejected, not truncated.
+- `TSub.pattern` is the pattern a `<-` binds.
+- Literals keep their type: `Natural{decimal}` is a decimal string, `Word{value}` is a U32, `Float{bits}` is an F32's exact bits, and `Text{value}` is text. Counts and nonnegative levels are U32, and out-of-range metadata is rejected, not truncated.
 - A definition's arity includes erased/template binders. A constructor's arity counts its own fields; its type also includes datatype parameters.
 - Leading template binders correspond to symbolic references named `declaration.name + "~" + binder.name`. Substitute earlier parameters into dependent domains. Checked bodies drop these binders, so their levels start at zero. Concrete instances are separate definitions without template parameters.
 
@@ -92,7 +94,7 @@ The JavaScript host only connects Bend to upstream:
 - [effects.js](host/effects.js): Bend foreign effects. A subprocess bridges upstream's async loader to its synchronous IO runtime.
 - [run.js](host/run.js): attaches the adapter and launches a Bend entry point.
 
-Checking and compiling our Bend tools costs seconds and gigabytes, so the adapter keeps each checked build in `build/cache`. The key is the upstream pin plus the hash of the adapter and of every file upstream read for that tool. A changed input rebuilds it with a full check. The user's program is never cached. `bun run check` still checks every entry point.
+Checking and compiling our Bend tools costs seconds and gigabytes, so the adapter keeps each checked build in `build/cache`. The key is the upstream pin plus the hash of the adapter and of every file upstream read for that tool. A changed input rebuilds it with a full check. The user's program is never cached. `bun run check` gives each proof upstream's verdict, which refuses unsafe and foreign code, and checks the CLI as a program through this cache.
 
 [wire.bend](src/wire.bend) is the generic transport. [decode.bend](src/decode.bend) owns the mapping into Core; backends never see transport types.
 

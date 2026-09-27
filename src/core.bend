@@ -16,6 +16,8 @@ type Pattern is Data:
 
 type Literal is Data:
   Natural{decimal: String}
+  Word{value: U32}
+  Float{bits: U32}
   Text{value: String}
 
 type Binder<-A: Data> is Data:
@@ -24,7 +26,7 @@ type Binder<-A: Data> is Data:
 type Term is Data:
   TVar{name: String, level: Level, memo: Maybe<&2, Term>}
   TRef{name: String, parallel: Maybe<&2, Bool>}
-  TSub{level: Level, value: Either<&2, &2, Term, Pattern>, body: Term}
+  TSub{level: Level, pattern: Pattern, body: Term}
   TLet{bindings: List<&2, Binder<Term>>, body: Term}
   TTyp{kind: Term}
   TQnt{}

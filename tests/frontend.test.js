@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { linkSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { check, array, bend, encode } from 'bend-frontend';
@@ -34,7 +34,7 @@ function cli(...args) {
 
 test('the shared Bend core retains full-language constructs as serializable data', () => {
   expect(program.format).toBe('bend-frontend.core');
-  expect(program.version).toBe(2);
+  expect(program.version).toBe(3);
   const tree = array(program.declarations).find(d => d.header.name === 'Tree');
   expect(tree?.$).toBe('Algebraic');
   expect(array(tree.constructors).map(c => c.name)).toEqual(['Leaf', 'Branch']);
@@ -48,6 +48,11 @@ test('the shared Bend core retains full-language constructs as serializable data
   expect(array(array(program.templates).find(t => t.name === 'twice').instances).length).toBeGreaterThan(0);
   expect(nodes(definition('array_value').checked).some(n => n.$ === 'TRef' && n.name === 'Array.set')).toBe(true);
   const names = array(program.declarations).map(d => d.header.name);
+  const literals = name => nodes(definition(name).checked).filter(n => n.$ === 'TLit').map(n => n.value);
+  expect(literals('main')).toContainEqual({ $: 'Word', value: 10 });
+  expect(literals('array_value').some(l => l.$ === 'Natural')).toBe(true);
+  expect(literals('half')).toEqual([{ $: 'Float', bits: 0x3fc00000 }]); // 1.5 as f32 bits
+  expect(literals('greeting')).toEqual([{ $: 'Text', value: 'hi' }]);
   expect(names).toContain('Array.set'); // reached Base declarations stay
   expect(names).not.toContain('String.join'); // unreached ones are not exported
 
@@ -107,10 +112,10 @@ def effect() -> IO(Unit):
   const declarations = array(result.declarations);
   expect(declarations.find(d => d.header.name === 'diverge')).toMatchObject({ unsafe: true });
   const declaration = declarations.find(d => d.header.name === 'effect');
-  expect(array(declaration.foreign)).toEqual([effect]);
+  expect(array(declaration.foreign)).toEqual([realpathSync(effect)]); // upstream resolves links
   expect(declaration.source).toEqual({ $: 'None' });
   expect(declaration.checked).toEqual({ $: 'None' });
-  expect(array(result.inputs)).toContain(effect);
+  expect(array(result.inputs)).toContain(realpathSync(effect));
   rmSync(effect);
   expect(cli('export', file, '-o', path.join(temp, 'effects.json')).exitCode).toBe(0);
 }, 90_000);
@@ -142,21 +147,22 @@ test('Bend decodes the host boundary and rejects malformed upstream data', async
   const qty = { $: 'Lone' };
   const raw = body => ({ repository: 'test', commit: 'test', entry: '/test.bend', inputs: [], order: ['f'],
     templates: {}, declarations: { f: { $: 'Def', n: 0, x: 0, T: ref, v: body, e: body } },
-    holes: 0, open: 0, paired_laws_missing: false });
+    holes: 0, paired_laws_missing: false });
   const finish = value => frontend.finish({ $: 'Done', value: encode(value) });
   const decode = body => finish(raw(body));
   const body = result => array(result.value.declarations)[0].checked.value;
 
-  const sub = decode({ $: 'Sub', i: -1, v: ref, f: ref });
-  expect(body(sub)).toMatchObject({ $: 'TSub', level: { $: 'Placeholder' }, value: { $: 'Inl' } });
-  expect(sub.value.nodes).toBe(7); // header type + three nodes in each source/checked body
+  expect(decode({ $: 'Sub', i: -1, v: ref, f: ref })).toMatchObject({ $: 'Fail', error: 'Expected upstream pattern' });
   const pattern = decode({ $: 'Sub', i: 0,
     v: { $: 'PCtr', k: 'C', x: [{ $: 'PVar', k: 'x', i: 0, q: qty }] }, f: ref });
-  expect(body(pattern).value).toMatchObject({ $: 'Inr', value: { $: 'PCtr' } });
+  // The raw library keeps upstream's namespaced tags; check() drops them.
+  expect(body(pattern)).toMatchObject({ $: 'core.TSub', level: { $: 'core.Bound', value: 0 }, pattern: { $: 'core.PCtr' } });
   expect(pattern.value.nodes).toBe(5); // patterns are not term nodes
 
   const group = { $: 'Let', k: ['x'], i: [0], q: [qty], v: [ref], f: ref };
   expect(array(body(decode(group)).bindings)).toHaveLength(1);
+  expect(decode({ $: 'Lit', k: 'Nat', v: 'hi' })).toMatchObject({ $: 'Fail', error: 'Expected upstream literal' });
+  expect(decode({ $: 'Lit', k: 'U32', v: 2 ** 32 }).$).toBe('Fail');
   expect(decode({ ...group, q: [] })).toMatchObject({ $: 'Fail', error: 'Mismatched upstream let bindings' });
   expect(decode({ $: 'NewUpstreamTerm' })).toMatchObject({ $: 'Fail', error: 'Unknown upstream term: NewUpstreamTerm' });
   expect(decode({ $: 'Qua', q: { $: 'FutureQuantity' } }).$).toBe('Fail');
@@ -165,8 +171,8 @@ test('Bend decodes the host boundary and rejects malformed upstream data', async
   expect(body(decode({ $: 'Var', k: 'x', i: 0xffffffff })).level.value).toBe(0xffffffff);
   expect(decode({ $: 'Ref', k: 'x', b: 'true' }).$).toBe('Fail');
   expect(decode({ $: 'App', f: ref }).$).toBe('Fail');
-  expect(finish({ ...raw(ref), holes: 1 })).toMatchObject({ $: 'Fail', error: 'Incomplete program: 1 proof holes and 0 open laws' });
+  expect(finish({ ...raw(ref), holes: 1 })).toMatchObject({ $: 'Fail', error: 'Incomplete program: 1 proof holes or unfilled laws' });
   expect(finish({ ...raw(ref), paired_laws_missing: true }).$).toBe('Fail');
-  expect(frontend.finish({ $: 'Done', value: { $: 'Decoded', value: { $: 'Unit' } } }).$).toBe('Fail');
+  expect(frontend.finish({ $: 'Done', value: { $: 'wire.Decoded', value: { $: 'Unit' } } }).$).toBe('Fail');
   expect(() => encode({ closure() {} })).toThrow('Cannot transport upstream value: function');
 });

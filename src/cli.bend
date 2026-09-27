@@ -39,4 +39,4 @@ def run(args: List<String>) -> IO(Unit):
 def main() -> IO(Unit):
   do IO<Unit>:
     args : List<String> <- IO.args()
-    run(args)
+    run(List.tail(&1, String, args)) # the first is the program

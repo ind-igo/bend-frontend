@@ -67,23 +67,31 @@ def pattern(value: Wire.Value<Part>) -> Result<&2, &2, String, Core.Pattern>:
     case _:
       Fail{"Expected upstream pattern"}
 
-def substitution(value: Wire.Value<Part>) -> Result<&2, &2, String, Either<&2, &2, Core.Term, Core.Pattern>>:
-  match value:
-    case Wire.Decoded{Term{value, _}}:
-      Done{Inl{value}}
-    case Wire.Decoded{Pattern{value}}:
-      Done{Inr{value}}
-    case _:
-      Fail{"Expected upstream substitution"}
-
-def literal(value: Wire.Value<Part>) -> Result<&2, &2, String, Core.Literal>:
-  match value:
-    case Wire.Text{value}:
+# An F32 literal carries its bits, so the value is exact.
+def literal(kind: String, value: Wire.Value<Part>) -> Result<&2, &2, String, Core.Literal>:
+  match kind value:
+    case "String" Wire.Text{value}:
       Done{Core.Text{value}}
-    case Wire.Number{value}:
+    case "Nat" Wire.Number{value}:
       Done{Core.Natural{value}}
-    case _:
+    case "U32" value:
+      do Result<&2, &2, String, Core.Literal>:
+        value : U32 <- number(value)
+        return Core.Word{value}
+    case "F32" value:
+      do Result<&2, &2, String, Core.Literal>:
+        bits : U32 <- number(value)
+        return Core.Float{bits}
+    case _ _:
       Fail{"Expected upstream literal"}
+
+def accept(program: Core.Program, missing: Bool, +holes: U32) -> Result<&2, &2, String, Core.Program>:
+  match missing:
+    case True{}:
+      Fail{"PROOF.bend must import the adjacent LAWS.bend"}
+    case False{}:
+      Bool.pick(Result<&2, &2, String, Core.Program>, U32.is_zero(holes), Done{program},
+        Fail{"Incomplete program: " ++ U32.show(holes) ++ " proof holes or unfilled laws"})
 
 def bindings(names: Wire.Value<Part>, levels: Wire.Value<Part>, quantities: Wire.Value<Part>, values: Wire.Value<Part>) ->
   Result<&2, &2, String, List<&2, Core.Binder<Core.Term>>>:
@@ -140,9 +148,9 @@ def term.tag(tag: String, +value: Wire.Value<Part>) -> Result<&2, &2, String, Co
     case "Sub":
       do Result<&2, &2, String, Core.Term>:
         lev : Core.Level <- level(get(value, "i"))
-        sub : Either<&2, &2, Core.Term, Core.Pattern> <- substitution(get(value, "v"))
+        pat : Core.Pattern <- pattern(get(value, "v"))
         body : Core.Term <- term(get(value, "f"))
-        return Core.TSub{lev, sub, body}
+        return Core.TSub{lev, pat, body}
     case "Let":
       do Result<&2, &2, String, Core.Term>:
         binds : List<&2, Core.Binder<Core.Term>> <- let_bindings(value)
@@ -196,7 +204,8 @@ def term.tag(tag: String, +value: Wire.Value<Part>) -> Result<&2, &2, String, Co
         return Core.TCtr{name, args}
     case "Lit":
       do Result<&2, &2, String, Core.Term>:
-        lit : Core.Literal <- literal(get(value, "v"))
+        kind : String <- text(get(value, "k"))
+        lit : Core.Literal <- literal(kind, get(value, "v"))
         return Core.TLit{lit}
     case "Mat":
       do Result<&2, &2, String, Core.Term>:
@@ -358,7 +367,7 @@ def templates(fields: Wire.Value<Part>) -> Result<&2, &2, String, List<&2, Core.
       Fail{"Malformed upstream templates"}
 
 type Loaded is Data:
-  Loaded{program: Core.Program, holes: U32, open: U32, paired_laws_missing: Bool}
+  Loaded{program: Core.Program, holes: U32, paired_laws_missing: Bool}
 
 def program(+value: Wire.Value<Part>) -> Result<&2, &2, String, Loaded>:
   do Result<&2, &2, String, Loaded>:
@@ -373,10 +382,9 @@ def program(+value: Wire.Value<Part>) -> Result<&2, &2, String, Loaded>:
     defs : List<&2, Core.Declaration> <- declarations(defs)
     count : U32 <- number(Wire.Number{Nat.show(nodes(value))}) # reuse the U32 range check
     holes : U32 <- number(get(value, "holes"))
-    open : U32 <- number(get(value, "open"))
     missing : Bool <- boolean(get(value, "paired_laws_missing"))
-    return Loaded{Core.Program{"bend-frontend.core", 2, repository, commit, entry,
-      inputs, order, tmps, defs, count}, holes, open, missing}
+    return Loaded{Core.Program{"bend-frontend.core", 3, repository, commit, entry,
+      inputs, order, tmps, defs, count}, holes, missing}
 
 def read(value: Wire.Value<Unit>) -> Result<&2, &2, String, Loaded>:
   do Result<&2, &2, String, Loaded>:

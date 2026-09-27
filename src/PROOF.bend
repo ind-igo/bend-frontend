@@ -50,16 +50,10 @@ def Laws.bare_idempotent(term):
     case Core.THol{_}:
       {==}
 
-def Laws.missing_laws_rejected(program, closed, holes, open):
+def Laws.missing_laws_rejected(program, holes):
   {==}
 
 def Laws.complete_accepted(program):
-  {==}
-
-def Laws.substitution_term(term, nodes):
-  {==}
-
-def Laws.substitution_pattern(pattern):
   {==}
 
 def Laws.metadata_overflow_rejected():

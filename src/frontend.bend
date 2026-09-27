@@ -10,20 +10,10 @@ def load(file: String) -> IO(Result<&2, &2, String, Wire.Value<Unit>>):
 def write(file: String, program: Core.Program) -> IO(Result<&2, &2, String, Unit>):
   import "../host/effects.js"
 
-def accept(program: Core.Program, missing: Bool, closed: Bool, holes: U32, open: U32) ->
-  Result<&2, &2, String, Core.Program>:
-  match missing closed:
-    case True{} _:
-      Fail{"PROOF.bend must import the adjacent LAWS.bend"}
-    case False{} False{}:
-      Fail{"Incomplete program: " ++ U32.show(holes) ++ " proof holes and " ++ U32.show(open) ++ " open laws"}
-    case False{} True{}:
-      Done{program}
-
 def decoded(loaded: Decode.Loaded) -> Result<&2, &2, String, Core.Program>:
   match loaded:
-    case Decode.Loaded{program, +holes, +open, missing}:
-      accept(program, missing, U32.is_zero(holes) && U32.is_zero(open), holes, open)
+    case Decode.Loaded{program, holes, missing}:
+      Decode.accept(program, missing, holes)
 
 def finish(loaded: Result<&2, &2, String, Wire.Value<Unit>>) -> Result<&2, &2, String, Core.Program>:
   do Result<&2, &2, String, Core.Program>:

@@ -29,6 +29,12 @@ def array_value() -> Array<U32> & U32:
   a[5] <- 42
   a[5]
 
+def half() -> F32:
+  1.5
+
+def greeting() -> String:
+  "hi"
+
 def main() -> U32:
   tree = {Branch{Leaf{10}, Branch{Leaf{20}, Leaf{5}}} : Tree}
   add5 = adder(5)
